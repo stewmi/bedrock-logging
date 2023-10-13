@@ -1,0 +1,75 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Bedrock Logging Configuration
+Parameters: 
+  AdminRoleName:
+    Type: String
+    Default: Admin
+  LogPrefix:
+    Type: String
+    Default: bedrock
+  NamingPrefix:
+    Type: String
+    Default: customer
+
+Resources:
+  BedrockS3Logging:
+    Type: AWS::S3::Bucket
+    Properties: 
+      BucketName: !Sub "${NamingPrefix}-bedrock-logging-${AWS::AccountId}"
+      Tags:
+        - Key: key
+          Value: value
+  BedRockBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref BedrockS3Logging
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - s3:PutObject
+            Effect: Allow
+            Resource: !Sub "${BedrockS3Logging.Arn}/${LogPrefix}/AWSLogs/${AWS::AccountId}/BedrockModelInvocationLogs/*"
+            Principal: 
+              Service: bedrock.amazonaws.com
+            Condition:
+              StringEquals:
+                'aws:SourceAccount': !Ref AWS::AccountId
+              ArnLike:
+                'aws:SourceArn': !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:*'
+  BedrockLogGroup:
+      Type: AWS::Logs::LogGroup
+      Properties:
+        RetentionInDays: 14
+        LogGroupName: !Sub "/aws/bedrock/${NamingPrefix}-bedrock-cw-logging-${AWS::AccountId}"
+  BedrockLoggingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-log-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - bedrock.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Policies:
+        - PolicyName: !Sub "${AWS::StackName}-policy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:*"
+
+Outputs:
+  LogGroupName:
+    Value: !Ref BedrockLogGroup
+  LogRoleArn:
+    Value: !GetAtt BedrockLoggingRole.Arn
+  Bucket:
+    Value: !Ref BedrockS3Logging
